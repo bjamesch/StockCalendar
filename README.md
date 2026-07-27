@@ -1,5 +1,7 @@
 # StockCalendar
 
+![StockCalendar running on the physical panel](images/device.jpg)
+
 A battery-powered 7.3" e-paper calendar that also tracks the stock market
 — built on Waveshare's
 [RPi Zero PhotoPainter](https://www.waveshare.com/wiki/RPi_Zero_PhotoPainter)
