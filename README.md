@@ -8,6 +8,40 @@ automatically via cron, keeps time offline through an onboard RTC, and
 degrades gracefully to cached data whenever any of its network sources are
 unreachable.
 
+## The story
+
+This started with a simple idea: an 8-year-old girl, some pocket money, and
+ten shares of TSMC. Rather than a bank statement she'd never read, why not
+put her savings somewhere she'd actually look — a wooden photo frame on the
+shelf, right next to the calendar she checks for school and the weather she
+checks before deciding what to wear? A small hand-drawn cat that smiles
+when her savings go up and frowns when they go down turned an abstract
+number into something she could feel, with no percentages or candlestick
+charts required.
+
+But the shape of the idea is bigger than one stock, one currency, or one
+kid. At its core, this project is really just: *read a few numbers you
+care about, cache them safely, draw them somewhere calm and always-on, and
+sip almost no power doing it.* That pattern reaches far past a stock
+ticker:
+
+- A grandparent's blood-pressure trend instead of a stock price, so family
+  can check in without asking.
+- A household's shared chore points, so nobody has to nag.
+- A garden's soil moisture and next watering date, framed on a windowsill.
+- A small shop's daily takings next to the till, no app or login required.
+- A runner's weekly mileage building toward a race, beside the actual
+  race-day calendar.
+- A language-learner's streak, sitting somewhere they'll see it every
+  morning.
+
+None of these need a phone app, a subscription, or a screen competing for
+attention — just a cheap e-paper panel, a battery, and a small computer
+quietly doing the same three things this project does: fetch, cache, draw.
+If there's a number in your life you wish you paid more attention to,
+there's a good chance it belongs on a shelf like this one, not buried in
+an app you forgot to open.
+
 ## What it shows
 
 - **A savings tracker** — a fixed cash amount plus a stock holding, tracked
