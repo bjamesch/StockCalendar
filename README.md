@@ -1,8 +1,9 @@
-# PhotoPainter Dashboard
+# StockCalendar
 
-A battery-powered 7.3" e-paper dashboard built on Waveshare's
+A battery-powered 7.3" e-paper calendar that also tracks the stock market
+— built on Waveshare's
 [RPi Zero PhotoPainter](https://www.waveshare.com/wiki/RPi_Zero_PhotoPainter)
-— a Raspberry Pi Zero 2 W driving a 6-color ACeP display. Refreshes
+(a Raspberry Pi Zero 2 W driving a 6-color ACeP display). Refreshes
 automatically via cron, keeps time offline through an onboard RTC, and
 degrades gracefully to cached data whenever any of its network sources are
 unreachable.
