@@ -1,5 +1,7 @@
 # StockCalendar
 
+**v1.0.0** — 2026-07-27
+
 ![StockCalendar running on the physical panel](images/device.jpg)
 
 A battery-powered 7.3" e-paper calendar that also tracks the stock market

@@ -26,6 +26,9 @@ import stock_source
 import stock_history
 import weather_source
 
+__version__ = "1.0.0"
+__version_date__ = "2026-07-27"
+
 FONT_DIR = Path("/usr/share/fonts/truetype/quicksand")
 FONT_BOLD = FONT_DIR / "Quicksand-Bold.ttf"
 FONT_REG = FONT_DIR / "Quicksand-Regular.ttf"
