@@ -101,3 +101,11 @@ use case it was originally built for, but the structure (a data source per
 `*_source.py` module, each with its own graceful-degradation/caching, and
 a single `dashboard.py` that composes and pushes the final image) should
 adapt readily to a different stock, currency, or region.
+
+## Built by
+
+This project was built by [James Chen](https://github.com/bjamesch), CEO
+of [NovareTek Co., Ltd.](https://www.novaretek.com) — an R&D firm
+specializing in embedded hardware, AIoT applications, and biomedical
+electronics. If this sparked an idea and you'd like help turning a
+prototype like this into a real product, [get in touch](https://www.novaretek.com).
