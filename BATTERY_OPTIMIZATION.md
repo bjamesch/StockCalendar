@@ -182,3 +182,39 @@ awake time versus staying powered on continuously.
 Not written yet — draft this (systemd unit + shutdown-hook script) once
 hardware is actually chosen and in hand, rather than against untested
 assumptions about a specific board's exact shutdown-signal mechanism.
+
+## Scheduled Wi-Fi on/off (implemented)
+
+Wi-Fi draws power even when idle, and the stock/weather data it fetches
+is only actually needed during trading hours. Three cron rules turn the
+radio on/off via `nmcli radio wifi on|off` (managed by NetworkManager;
+no privilege prompt needed for this user):
+
+```
+@reboot sleep 600 && ~/photopainter-calendar/wifi_on.sh
+0 9 * * 1-5 ~/photopainter-calendar/wifi_on.sh
+30 13 * * 1-5 ~/photopainter-calendar/wifi_off.sh
+```
+
+- Wi-Fi is off for the first 10 minutes after any reboot, then on.
+- On weekdays, Wi-Fi is on 9:00-13:30 (trading hours) and off the rest of
+  the time, including all of the weekend, unless a reboot's 10-minute
+  grace window is active.
+- The existing dashboard cron ticks outside this window keep running on
+  schedule and simply redraw from cached data (the `*_source.py` modules
+  already degrade gracefully on network failure) — nothing else changes.
+
+**Tradeoff, accepted deliberately**: remote access (SSH/Tailscale) is
+only reachable during that same window, since it also rides on Wi-Fi.
+Outside it, the only way back in is a physical reboot (10-minute grace
+window) or waiting for the next 9:00 weekday.
+
+**Manual override**, for days you need to stay connected regardless of
+the schedule:
+```
+~/photopainter-calendar/wifi_always_on.sh       # keep Wi-Fi on, ignore schedule
+~/photopainter-calendar/wifi_follow_schedule.sh # revert to the schedule above
+```
+The override works via a flag file (`~/.wifi_always_on`) that
+`wifi_off.sh` checks before turning the radio off — if present, the
+scheduled shutoff is skipped entirely.
