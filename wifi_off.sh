@@ -3,4 +3,4 @@
 if [ -f "$HOME/.wifi_always_on" ]; then
     exit 0
 fi
-nmcli radio wifi off
+sudo nmcli radio wifi off

@@ -1,2 +1,2 @@
 #!/bin/bash
-nmcli radio wifi on
+sudo nmcli radio wifi on

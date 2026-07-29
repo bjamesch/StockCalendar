@@ -26,8 +26,8 @@ import stock_source
 import stock_history
 import weather_source
 
-__version__ = "1.0.0"
-__version_date__ = "2026-07-27"
+__version__ = "1.1.0"
+__version_date__ = "2026-07-29"
 
 FONT_DIR = Path("/usr/share/fonts/truetype/quicksand")
 FONT_BOLD = FONT_DIR / "Quicksand-Bold.ttf"
@@ -57,7 +57,7 @@ WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"]
 # assumes, so the fully-composed image is rotated before being pushed.
 PANEL_ROTATION_DEGREES = 180
 
-ERIN_CASH_NT = 3831
+ERIN_CASH_NT = 3431
 ERIN_TSMC_SHARES = 10
 
 RED = (255, 0, 0)
@@ -186,20 +186,36 @@ def draw_weather_panel(draw, box, weather, f_label, f_temp, f_small):
         draw.text((x0, y0), "Weather unavailable", font=f_small, fill=BLACK)
         return
 
-    y = y0
+    # Fixed-width columns instead of one space-separated string -- gives
+    # deliberate breathing room between weekday/temps/rain%, and keeps
+    # everything aligned regardless of how wide each value renders. Column
+    # widths are chosen so the table spans nearly the full card width,
+    # leaving only a calendar-card-sized ~6-10px margin once centered,
+    # rather than a large leftover gap on one side.
+    weekday_w = WEATHER_ICON_SIZE + 8 + 50
+    hilo_w = 72
+    rain_w = draw.textlength("100%", font=f_small)
+    content_w = weekday_w + hilo_w + rain_w
+    x0 = x0 + max(0, int((x1 - x0 - content_w) // 2))
+
+    # Same idea vertically: tighten the line spacing slightly and center
+    # the resulting block in the box, so there's even top/bottom padding
+    # instead of the content running flush to (or past) the card edges.
+    row_h = 24
+    header_h = 26
+    content_h = header_h * 2 + row_h * len(weather["days"])
+    y = y0 + max(0, int((y1 - y0 - content_h) // 2))
+
     draw.text((x0, y), "Hsinchu", font=f_label, fill=BLACK)
-    y += 28
+    y += header_h
 
     cur_label = weather_source.weather_label(weather["current_code"])
     draw.text((x0, y), f'{weather["current_temp"]:.0f}°C {cur_label}', font=f_temp, fill=BLACK)
-    y += 28
+    y += header_h
 
-    # Fixed-width columns instead of one space-separated string -- gives
-    # deliberate breathing room between weekday/temps/rain%, and keeps
-    # everything aligned regardless of how wide each value renders.
-    weekday_col_x = x0 + WEATHER_ICON_SIZE + 6
-    hilo_col_x = weekday_col_x + 38
-    rain_col_x = hilo_col_x + 58
+    weekday_col_x = x0 + WEATHER_ICON_SIZE + 8
+    hilo_col_x = weekday_col_x + 50
+    rain_col_x = hilo_col_x + 72
 
     for day in weather["days"]:
         # Same weekend color convention as the mini calendar: Sat blue, Sun red.
@@ -208,7 +224,7 @@ def draw_weather_panel(draw, box, weather, f_label, f_temp, f_small):
         draw.text((weekday_col_x, y), day["weekday"], font=f_small, fill=color)
         draw.text((hilo_col_x, y), f'{day["hi"]:.0f}/{day["lo"]:.0f}', font=f_small, fill=color)
         draw.text((rain_col_x, y), f'{day["rain_pct"]:.0f}%', font=f_small, fill=color)
-        y += 26
+        y += row_h
 
 
 def _draw_star(draw, cx, cy, r, fill=YELLOW):
