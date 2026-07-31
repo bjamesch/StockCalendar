@@ -85,6 +85,39 @@ def fetch_tsmc_quote_yahoo():
     }
 
 
+def fetch_intraday_backfill_yahoo(now):
+    """One-shot backfill of today's already-finished session's 5-minute
+    bars from Yahoo's chart endpoint, for when today's own live per-tick
+    capture was missed entirely (e.g. this device was down all day). Only
+    the range/interval differ from fetch_tsmc_quote_yahoo() -- same
+    endpoint, same ticker. Returns [] if Yahoo's most recent session
+    doesn't actually match today (e.g. queried on a weekend/holiday, where
+    "range=1d" reflects the last real trading day instead) or the fetch
+    fails, so callers never mislabel a stale day's bars as today's."""
+    req = urllib.request.Request(f"{YAHOO_URL}?interval=5m&range=1d",
+                                  headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+
+    result = data["chart"]["result"][0]
+    meta = result["meta"]
+    tz = timezone(timedelta(seconds=meta["gmtoffset"]))
+    session_date = datetime.fromtimestamp(meta["regularMarketTime"], tz=tz).strftime("%Y-%m-%d")
+    if session_date != now.strftime("%Y-%m-%d"):
+        return []
+
+    timestamps = result["timestamp"]
+    closes = result["indicators"]["quote"][0]["close"]
+    samples = []
+    for ts, close in zip(timestamps, closes):
+        if close is None:
+            continue
+        t = datetime.fromtimestamp(ts, tz=tz)
+        if TRADING_START <= t.time() <= TRADING_END:
+            samples.append([t.strftime("%H:%M"), close])
+    return samples
+
+
 def _fresh_state(today_str):
     return {"date": today_str, "prev_close": None, "name": None,
             "last_price": None, "last_quote_date": None, "samples": []}
@@ -138,6 +171,25 @@ def get_stock_state(now):
     state = _load_trace(today_str)
 
     if not in_trading_window(now):
+        # Today's session is over (or hasn't started) and we have no
+        # samples for it at all -- if the session already finished with
+        # zero live ticks captured (e.g. this device was down all day),
+        # backfill from Yahoo once so the intraday chart shows today's
+        # real movement instead of falling back to the last day that has
+        # data. Only attempted once: after it succeeds, state["samples"]
+        # is non-empty and this branch is skipped on every later tick.
+        if now.weekday() < 5 and now.time() > TRADING_END and not state["samples"]:
+            try:
+                samples = fetch_intraday_backfill_yahoo(now)
+            except Exception:
+                logging.warning("Intraday backfill fetch failed", exc_info=True)
+                samples = []
+            if samples:
+                state["samples"] = samples
+                if state["last_price"] is None:
+                    state["last_price"] = samples[-1][1]
+                    state["last_quote_date"] = today_str
+                STATE_FILE.write_text(json.dumps(state))
         return state
 
     quote = None

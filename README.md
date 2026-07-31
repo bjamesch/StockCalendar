@@ -1,6 +1,6 @@
 # StockCalendar
 
-**v1.1.0** — 2026-07-29
+**v1.2.0** — 2026-07-31
 
 ![StockCalendar running on the physical panel](images/device.jpg)
 

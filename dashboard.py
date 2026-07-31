@@ -26,8 +26,8 @@ import stock_source
 import stock_history
 import weather_source
 
-__version__ = "1.1.0"
-__version_date__ = "2026-07-29"
+__version__ = "1.2.0"
+__version_date__ = "2026-07-31"
 
 FONT_DIR = Path("/usr/share/fonts/truetype/quicksand")
 FONT_BOLD = FONT_DIR / "Quicksand-Bold.ttf"
@@ -503,46 +503,65 @@ def draw_erin_panel(draw, box, stock, history_rows, now, fonts, chart_mode="hist
               font=fonts["panel_subtitle"], fill=BLACK)
     y += 34
 
+    today_str = now.strftime("%Y-%m-%d")
+
+    # Daily-history fallbacks, kept separate: today's own close (once the
+    # EOD feed has published it) is a candidate for the "closed at" display
+    # price, but must never be used as the "since close" reference -- that
+    # has to be the prior trading day's close, or the comparison is today
+    # against itself.
+    today_history_close = None
+    prior_history_close = None
+    for row in reversed(history_rows):
+        if row["date"] == today_str:
+            today_history_close = row["close"]
+        elif prior_history_close is None:
+            prior_history_close = row["close"]
+            break
+
     # Prefer the live feed's prev_close (guaranteed consistent with `price`,
-    # both from the same fetch) but fall back to the cached daily-history's
-    # most recent close, which stays available even before today's live
-    # price has arrived (e.g. pre-market).
-    last_close = history_rows[-1]["close"] if history_rows else None
-    prev_close = (stock.get("prev_close") if stock else None) or last_close
+    # both from the same fetch) but fall back to the daily-history feed's
+    # most recent PRIOR close, which stays available even before today's
+    # live price has arrived (e.g. pre-market).
+    prev_close = (stock.get("prev_close") if stock else None) or prior_history_close
 
     price = stock.get("last_price") if stock else None
-    today_str = now.strftime("%Y-%m-%d")
     is_trading_day = bool(stock) and stock.get("last_quote_date") == today_str
     # Only call it "now at" while the market is genuinely still open for a
     # trading day we have a fresh price for -- past 13:30 (or on a non-
     # trading day) that same price IS the close, so it's labeled that way.
     is_live = price is not None and is_trading_day and stock_source.in_trading_window(now)
+    closed_price = price if (price is not None and is_trading_day) else (today_history_close or prev_close)
+    # The price the equity line below uses: live intraday while the market's
+    # open, otherwise whatever was just shown on the "closed at" line above
+    # (today's close if the intraday feed caught it, else the daily-history
+    # fallback) -- never the raw intraday `price`, which can be None even
+    # when a usable closed price is already on screen.
+    display_price = price if is_live else closed_price
 
     if is_live:
         draw.text((x0, y), f"TSMC now at NT${price:,.0f}", font=fonts["stock_note"], fill=BLACK)
         y += 32
-    else:
-        closed_price = price if (price is not None and is_trading_day) else prev_close
-        if closed_price is not None:
-            draw.text((x0, y), f"TSMC closed at NT${closed_price:,.0f}", font=fonts["stock_note"], fill=BLACK)
-            y += 32
+    elif closed_price is not None:
+        draw.text((x0, y), f"TSMC closed at NT${closed_price:,.0f}", font=fonts["stock_note"], fill=BLACK)
+        y += 32
 
-    if price is None:
-        # No live price yet (e.g. before market open, or a fetch outage) --
-        # the chart below only needs history_rows, not today's price, so it
-        # still renders; only the "today" section is skipped. On a weekend
-        # "today" will never get a price, so name the next trading day
-        # instead of saying "today".
+    if display_price is None:
+        # No price at all yet, live or historical (e.g. before market open
+        # on a brand new install, or every fetch failing) -- the chart
+        # below only needs history_rows, so it still renders; only the
+        # "today" section is skipped. On a weekend "today" will never get
+        # a price, so name the next trading day instead of saying "today".
         day_label = "today" if now.weekday() < 5 else stock_source.next_trading_day_name(now)
         draw.text((x0, y), f"Waiting for {day_label}'s price...", font=fonts["stock_note"], fill=BLACK)
         y += 34
     else:
-        equity = ERIN_CASH_NT + price * ERIN_TSMC_SHARES
+        equity = ERIN_CASH_NT + display_price * ERIN_TSMC_SHARES
         draw.text((x0, y), f"NT${equity:,.0f}", font=fonts["value_hero"], fill=BLACK)
         y += 58
 
         if prev_close:
-            equity_change = (price - prev_close) * ERIN_TSMC_SHARES
+            equity_change = (display_price - prev_close) * ERIN_TSMC_SHARES
             # Taiwan convention: red = up, green = down (opposite of US markets)
             if equity_change > 0:
                 status, color, mood = f"Went up NT${equity_change:,.0f} since close", RED, "happy"
@@ -554,10 +573,6 @@ def draw_erin_panel(draw, box, stock, history_rows, now, fonts, chart_mode="hist
             status_w = draw.textlength(status, font=fonts["status_line"])
             draw_mood_cat(draw, x0 + status_w + 10, y - 4, 30, mood)
             y += 36
-
-        if not is_trading_day:
-            draw.text((x0, y), "The stock market is closed today.", font=fonts["note"], fill=BLACK)
-            y += 26
 
     # Consistent breathing room between the text block above and the chart,
     # regardless of which lines were shown.
