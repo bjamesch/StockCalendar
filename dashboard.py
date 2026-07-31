@@ -530,8 +530,11 @@ def draw_erin_panel(draw, box, stock, history_rows, now, fonts, chart_mode="hist
     if price is None:
         # No live price yet (e.g. before market open, or a fetch outage) --
         # the chart below only needs history_rows, not today's price, so it
-        # still renders; only the "today" section is skipped.
-        draw.text((x0, y), "Waiting for today's price...", font=fonts["stock_note"], fill=BLACK)
+        # still renders; only the "today" section is skipped. On a weekend
+        # "today" will never get a price, so name the next trading day
+        # instead of saying "today".
+        day_label = "today" if now.weekday() < 5 else stock_source.next_trading_day_name(now)
+        draw.text((x0, y), f"Waiting for {day_label}'s price...", font=fonts["stock_note"], fill=BLACK)
         y += 34
     else:
         equity = ERIN_CASH_NT + price * ERIN_TSMC_SHARES

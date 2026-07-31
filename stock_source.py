@@ -32,6 +32,17 @@ def in_trading_window(now):
     return now.weekday() < 5 and TRADING_START <= now.time() <= TRADING_END
 
 
+def next_trading_day_name(now):
+    """Weekday name of the next trading day after `now` (Mon-Fri) -- e.g.
+    'Monday' from a Saturday or Sunday. Used for the "waiting for X's
+    price" label so it doesn't say "today" on a day with no trading."""
+    d = now
+    while True:
+        d += timedelta(days=1)
+        if d.weekday() < 5:
+            return d.strftime("%A")
+
+
 def fetch_tsmc_quote():
     req = urllib.request.Request(URL, headers={"User-Agent": "photopainter-dashboard/1.0"})
     with urllib.request.urlopen(req, timeout=15) as resp:
