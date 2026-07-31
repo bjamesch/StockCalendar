@@ -94,6 +94,41 @@ def _parse_pop(raw):
     return None if raw == "-" else float(raw)
 
 
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+# Hsinchu City East District (東區) approximate centroid. Open-Meteo is only
+# used to backfill rain_pct for the days CWA's own forecast can't cover (see
+# _parse_pop above) -- CWA stays the source of truth for temps, icon codes,
+# and near-term PoP.
+HSINCHU_LAT = 24.80
+HSINCHU_LON = 120.97
+
+
+def _fetch_open_meteo_pop(dates):
+    """Best-effort daily max precipitation probability for the given
+    YYYY-MM-DD dates, keyed by date. Returns {} on any failure since this is
+    only a backfill -- a hiccup here should never break the primary CWA
+    fetch."""
+    if not dates:
+        return {}
+    try:
+        url = OPEN_METEO_URL + "?" + urllib.parse.urlencode({
+            "latitude": HSINCHU_LAT,
+            "longitude": HSINCHU_LON,
+            "daily": "precipitation_probability_max",
+            "timezone": "Asia/Taipei",
+            "start_date": min(dates),
+            "end_date": max(dates),
+        })
+        req = urllib.request.Request(url, headers={"User-Agent": "photopainter-dashboard/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        daily = data["daily"]
+        return dict(zip(daily["time"], daily["precipitation_probability_max"]))
+    except Exception:
+        logging.warning("Open-Meteo PoP backfill failed", exc_info=True)
+        return {}
+
+
 def fetch_hsinchu_weather():
     url = BASE_URL + "?" + urllib.parse.urlencode({
         "Authorization": _api_key(),
@@ -133,10 +168,14 @@ def fetch_hsinchu_weather():
             if is_daytime:
                 day["code"] = code  # prefer the daytime description over overnight
 
+    truncated = list(days.items())[:FORECAST_DAYS]
+    backfill = _fetch_open_meteo_pop([d for d, v in truncated if v["rain_pct"] is None])
+
     result_days = []
-    for date_str, vals in list(days.items())[:FORECAST_DAYS]:
+    for date_str, vals in truncated:
         weekday = datetime.strptime(date_str, "%Y-%m-%d").strftime("%a")
-        vals["rain_pct"] = vals["rain_pct"] if vals["rain_pct"] is not None else 0.0
+        if vals["rain_pct"] is None:
+            vals["rain_pct"] = backfill.get(date_str, 0.0)
         result_days.append({"date": date_str, "weekday": weekday, **vals})
 
     return {
