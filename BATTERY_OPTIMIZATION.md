@@ -183,38 +183,20 @@ Not written yet — draft this (systemd unit + shutdown-hook script) once
 hardware is actually chosen and in hand, rather than against untested
 assumptions about a specific board's exact shutdown-signal mechanism.
 
-## Scheduled Wi-Fi on/off (implemented)
+## Scheduled Wi-Fi on/off (tried, then reverted)
 
 Wi-Fi draws power even when idle, and the stock/weather data it fetches
-is only actually needed during trading hours. Three cron rules turn the
-radio on/off via `nmcli radio wifi on|off` (managed by NetworkManager;
-no privilege prompt needed for this user):
+is only actually needed during trading hours, so for a while three cron
+rules turned the radio on/off via `nmcli radio wifi on|off`: on 9:00-13:30
+weekdays (trading hours), off otherwise, with a 10-minute on-grace window
+after every reboot. A flag-file override (`wifi_always_on.sh` /
+`wifi_follow_schedule.sh`) let Wi-Fi be forced on regardless of the
+schedule when needed.
 
-```
-@reboot sleep 600 && ~/photopainter-calendar/wifi_on.sh
-0 9 * * 1-5 ~/photopainter-calendar/wifi_on.sh
-30 13 * * 1-5 ~/photopainter-calendar/wifi_off.sh
-```
-
-- Wi-Fi is off for the first 10 minutes after any reboot, then on.
-- On weekdays, Wi-Fi is on 9:00-13:30 (trading hours) and off the rest of
-  the time, including all of the weekend, unless a reboot's 10-minute
-  grace window is active.
-- The existing dashboard cron ticks outside this window keep running on
-  schedule and simply redraw from cached data (the `*_source.py` modules
-  already degrade gracefully on network failure) — nothing else changes.
-
-**Tradeoff, accepted deliberately**: remote access (SSH/Tailscale) is
-only reachable during that same window, since it also rides on Wi-Fi.
-Outside it, the only way back in is a physical reboot (10-minute grace
-window) or waiting for the next 9:00 weekday.
-
-**Manual override**, for days you need to stay connected regardless of
-the schedule:
-```
-~/photopainter-calendar/wifi_always_on.sh       # keep Wi-Fi on, ignore schedule
-~/photopainter-calendar/wifi_follow_schedule.sh # revert to the schedule above
-```
-The override works via a flag file (`~/.wifi_always_on`) that
-`wifi_off.sh` checks before turning the radio off — if present, the
-scheduled shutoff is skipped entirely.
+**Reverted 2026-07-31**: the tradeoff — remote access (SSH/Tailscale) only
+reachable during the same window Wi-Fi was up, since it rides on the same
+radio — wasn't worth the battery savings in practice. Wi-Fi is now left on
+permanently (no cron rules toggle it, no override scripts needed); the
+`wifi_*.sh` scripts and the three associated cron lines have been removed.
+If this trade is worth revisiting later, the schedule above is the one
+that was in place.
