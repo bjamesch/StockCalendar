@@ -93,6 +93,7 @@ stock_source.py        # live/intraday stock quote (TWSE + Yahoo Finance fallbac
 stock_history.py       # ~30 trading days of daily closes
 weather_source.py      # current + 7-day forecast (Taiwan CWA)
 battery_source.py      # battery % via onboard INA219 fuel gauge
+battery_log.py         # appends voltage/current/power/% to battery_log.csv, run every 5 min via cron
 check_google_finance.py  # standalone on-demand price cross-check, not in the cron pipeline
 test_display.py        # standalone hardware sanity check
 lib/                   # Waveshare e-paper driver + INA219 vendor driver

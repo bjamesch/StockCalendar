@@ -12,6 +12,8 @@ stock_intraday_last.json
 
 # Logs
 refresh.log
+battery_log.csv
+battery_log_errors.log
 
 # Python
 __pycache__/

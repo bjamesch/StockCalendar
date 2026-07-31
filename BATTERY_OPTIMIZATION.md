@@ -116,9 +116,12 @@ INA219 readings on battery (charger unplugged) averaged **~230mA** at
   second pass for the same reason as the first: doing so accurately would
   need a clean run with no active remote session connected.
 
-If a clean number is ever wanted: add a small cron job (e.g. every 5 min)
-that appends an INA219 reading to a CSV, let it run for a stretch with no
-active remote session connected, then review the log.
+**Implemented 2026-07-31**: `battery_log.py` appends one INA219 reading
+(voltage, current_mA, power_W, percent) to `battery_log.csv` every 5
+minutes via cron, independent of `dashboard.py`'s own variable refresh
+cadence. For the cleanest read on true unattended draw, review the log
+from a stretch with no active remote session connected, per the caveats
+above.
 
 ## Why real sleep/wake isn't possible today
 
