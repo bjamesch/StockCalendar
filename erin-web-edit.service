@@ -1,0 +1,14 @@
+[Unit]
+Description=Erin's Savings web editor (phone-accessible cash/shares form)
+After=network.target
+
+[Service]
+Type=simple
+User=bjamesch
+WorkingDirectory=/home/bjamesch/photopainter-calendar
+ExecStart=/usr/bin/python3 /home/bjamesch/photopainter-calendar/web_edit.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

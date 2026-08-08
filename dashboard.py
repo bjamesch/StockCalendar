@@ -11,13 +11,16 @@ stock_source.py / stock_history.py / weather_source.py. Battery percentage
 over I2C - see battery_source.py; it's simply omitted if unreadable."""
 import calendar
 import fcntl
+import json
 import logging
 import math
+import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import epd7in3e
@@ -26,8 +29,8 @@ import stock_source
 import stock_history
 import weather_source
 
-__version__ = "1.4.0"
-__version_date__ = "2026-07-31"
+__version__ = "1.5.0"
+__version_date__ = "2026-08-09"
 
 FONT_DIR = Path("/usr/share/fonts/truetype/quicksand")
 FONT_BOLD = FONT_DIR / "Quicksand-Bold.ttf"
@@ -46,6 +49,13 @@ LAST_CLEAR_FILE = Path(__file__).resolve().parent / ".last_clear_date"
 # toggle_chart_mode().
 CHART_MODE_FILE = Path(__file__).resolve().parent / ".chart_mode"
 
+# Whether to show the normal dashboard or a full-screen photo -- flips on
+# every actual panel redraw, see toggle_display_mode(). Photos themselves
+# live in PHOTOS_DIR, which is gitignored (device-only, never pushed to the
+# public repo).
+DISPLAY_MODE_FILE = Path(__file__).resolve().parent / ".display_mode"
+PHOTOS_DIR = Path(__file__).resolve().parent / "photos"
+
 # Guards against two runs (e.g. an overlapping cron tick, or a manual test
 # run) fighting over the same GPIO/SPI pins, which crashes with a "GPIO busy"
 # error rather than failing gracefully.
@@ -57,8 +67,24 @@ WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"]
 # assumes, so the fully-composed image is rotated before being pushed.
 PANEL_ROTATION_DEGREES = 180
 
-ERIN_CASH_NT = 3431
-ERIN_TSMC_SHARES = 10
+
+# Cash-saved/share-count are user-editable from a phone via web_edit.py
+# (a small always-on web form, see that file), which writes this JSON file.
+# Re-read on every dashboard.py run (each cron tick is a fresh process) so
+# an edit shows up on the next redraw without restarting anything.
+ERIN_SAVINGS_FILE = Path(__file__).resolve().parent / "erin_savings.json"
+_DEFAULT_ERIN_CASH_NT = 22431
+_DEFAULT_ERIN_TSMC_SHARES = 10
+
+
+def load_erin_savings():
+    if ERIN_SAVINGS_FILE.exists():
+        data = json.loads(ERIN_SAVINGS_FILE.read_text())
+        return data["cash_nt"], data["tsmc_shares"]
+    return _DEFAULT_ERIN_CASH_NT, _DEFAULT_ERIN_TSMC_SHARES
+
+
+ERIN_CASH_NT, ERIN_TSMC_SHARES = load_erin_savings()
 
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
@@ -198,20 +224,46 @@ def draw_weather_panel(draw, box, weather, f_label, f_temp, f_small):
     content_w = weekday_w + hilo_w + rain_w
     x0 = x0 + max(0, int((x1 - x0 - content_w) // 2))
 
+    # The current-condition line ("27°C Partly cloudy, thundershowers") can
+    # run wider than the card at f_temp size. When it does, wrap it onto a
+    # second line at the label's comma -- every CWA label long enough to
+    # overflow is two comma-joined clauses (see CWA_LABELS in
+    # weather_source.py) -- and draw both lines smaller, instead of letting
+    # the text spill past the card outline.
+    cur_label = weather_source.weather_label(weather["current_code"])
+    cur_text = f'{weather["current_temp"]:.0f}°C {cur_label}'
+    max_w = (x1 - x0) - 4
+    cur_wrap = draw.textlength(cur_text, font=f_temp) > max_w
+    if cur_wrap:
+        if ", " in cur_label:
+            first, rest = cur_label.split(", ", 1)
+            cur_lines = [f'{weather["current_temp"]:.0f}°C {first},', rest]
+        else:
+            cur_lines = [f'{weather["current_temp"]:.0f}°C', cur_label]
+
     # Same idea vertically: tighten the line spacing slightly and center
     # the resulting block in the box, so there's even top/bottom padding
     # instead of the content running flush to (or past) the card edges.
     row_h = 24
     header_h = 26
-    content_h = header_h * 2 + row_h * len(weather["days"])
+    cur_line_h = 18
+    # A little extra breathing room below the wrapped two-line condition
+    # before the forecast rows start, so "thundershowers" doesn't sit flush
+    # against the first date row.
+    cur_wrap_gap = 4
+    cur_h = cur_line_h * 2 + cur_wrap_gap if cur_wrap else header_h
+    content_h = header_h + cur_h + row_h * len(weather["days"])
     y = y0 + max(0, int((y1 - y0 - content_h) // 2))
 
     draw.text((x0, y), "Hsinchu", font=f_label, fill=BLACK)
     y += header_h
 
-    cur_label = weather_source.weather_label(weather["current_code"])
-    draw.text((x0, y), f'{weather["current_temp"]:.0f}°C {cur_label}', font=f_temp, fill=BLACK)
-    y += header_h
+    if cur_wrap:
+        draw.text((x0, y), cur_lines[0], font=f_small, fill=BLACK)
+        draw.text((x0, y + cur_line_h), cur_lines[1], font=f_small, fill=BLACK)
+    else:
+        draw.text((x0, y), cur_text, font=f_temp, fill=BLACK)
+    y += cur_h
 
     weekday_col_x = x0 + WEATHER_ICON_SIZE + 8
     hilo_col_x = weekday_col_x + 50
@@ -588,6 +640,22 @@ def draw_erin_panel(draw, box, stock, history_rows, now, fonts, chart_mode="hist
                             base_cash=ERIN_CASH_NT)
 
 
+def get_wifi_ip():
+    """Returns wlan0's IPv4 address if Wi-Fi is currently connected, else
+    None -- rendered as a blank corner (no address shown) rather than a
+    placeholder, so its absence on the panel is itself the "not connected"
+    signal."""
+    try:
+        out = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show", "wlan0"],
+            capture_output=True, text=True, timeout=3,
+        ).stdout
+    except Exception:
+        return None
+    match = re.search(r"inet (\d+\.\d+\.\d+\.\d+)", out)
+    return match.group(1) if match else None
+
+
 def build_image(width, height, now, stock, history_rows, weather, battery_percent, chart_mode="history"):
     img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
@@ -616,6 +684,14 @@ def build_image(width, height, now, stock, history_rows, weather, battery_percen
     draw_weather_panel(draw, weather_box, weather, fonts["sidebar_label"],
                         fonts["sidebar_temp"], fonts["sidebar_small"])
 
+    wifi_ip = get_wifi_ip()
+    if wifi_ip:
+        tw = draw.textlength(wifi_ip, font=fonts["battery"])
+        # Sit just below the weather card's outline (box bottom + draw_card's
+        # default 6px padding) instead of inside it.
+        ip_y = (height - margin) + 6 + 2
+        draw.text((width - margin - tw, ip_y), wifi_ip, font=fonts["battery"], fill=BLACK)
+
     if PANEL_ROTATION_DEGREES:
         img = img.rotate(PANEL_ROTATION_DEGREES)
 
@@ -636,7 +712,27 @@ def toggle_chart_mode():
     return new_mode
 
 
-def main():
+def toggle_display_mode():
+    """Flips between the normal dashboard and a full-screen photo, the same
+    once-per-real-redraw rhythm as toggle_chart_mode()."""
+    current = DISPLAY_MODE_FILE.read_text().strip() if DISPLAY_MODE_FILE.exists() else "dashboard"
+    new_mode = "photo" if current == "dashboard" else "dashboard"
+    DISPLAY_MODE_FILE.write_text(new_mode)
+    return new_mode
+
+
+def build_photo_image(width, height, photo_path):
+    """Crops/scales a photo to fill the panel exactly (cropping any excess
+    rather than letterboxing), then applies the same physical-mount
+    rotation build_image() uses."""
+    img = ImageOps.exif_transpose(Image.open(photo_path)).convert("RGB")
+    img = ImageOps.fit(img, (width, height), method=Image.LANCZOS)
+    if PANEL_ROTATION_DEGREES:
+        img = img.rotate(PANEL_ROTATION_DEGREES)
+    return img
+
+
+def main(force=False):
     lock_fh = open(LOCK_FILE, "w")
     try:
         fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -653,14 +749,24 @@ def main():
     history_rows = stock_history.load_history(today_str, now)
     battery_percent = battery_source.get_battery_percent()
 
-    if not should_redraw(now, is_new_day):
+    # force=True (the @reboot cron entry) skips the minute-0/30 throttle so
+    # the panel always shows current data right after power-up, instead of
+    # sitting on whatever was last drawn before the outage/reboot.
+    if not force and not should_redraw(now, is_new_day):
         logging.info("Data updated; skipping panel redraw this tick")
         return
 
     chart_mode = toggle_chart_mode()
-    logging.info("Rendering dashboard for %s (chart_mode=%s)", now.isoformat(), chart_mode)
+    display_mode = toggle_display_mode()
+    photo_files = sorted(PHOTOS_DIR.glob("*")) if PHOTOS_DIR.exists() else []
+
     epd = epd7in3e.EPD()
-    img = build_image(epd.width, epd.height, now, stock, history_rows, weather, battery_percent, chart_mode)
+    if display_mode == "photo" and photo_files:
+        logging.info("Rendering full-screen photo for %s (%s)", now.isoformat(), photo_files[0].name)
+        img = build_photo_image(epd.width, epd.height, photo_files[0])
+    else:
+        logging.info("Rendering dashboard for %s (chart_mode=%s)", now.isoformat(), chart_mode)
+        img = build_image(epd.width, epd.height, now, stock, history_rows, weather, battery_percent, chart_mode)
 
     epd.init()
     if is_new_day:
@@ -675,4 +781,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(force="--force" in sys.argv)

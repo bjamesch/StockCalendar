@@ -6,14 +6,20 @@ stock_today.json
 stock_history.json
 weather_today.json
 stock_intraday_last.json
+erin_savings.json
 .last_clear_date
 .chart_mode
+.display_mode
 .dashboard.lock
 
 # Logs
 refresh.log
 battery_log.csv
 battery_log_errors.log
+
+# Personal photos shown on the panel -- device-only, never pushed to the
+# public repo
+photos/
 
 # Python
 __pycache__/
